@@ -1,9 +1,19 @@
-# apex-dma-rs
+# Apex Legends DMA
 
-Super basic apex legends DMA enhancer with corner box esp and names. Works at last game update for 16.10.2025. Developed by me for reverse engineering educational purposes :3
+Super basic Apex Legends DMA enhancer. Works with the latest game update for 16.10.2025. Developed by me for reverse engineering educational purposes :3
+
+## Features
+- Corner box ESP
+- Player names
+- DMA-based memory access
+
+## Requirements
+- Rust (nightly/stable with edition 2024)
+- DMA hardware setup
+- Apex Legends installed
 
 ## Build
 Requires installed Rust (nightly/stable with edition 2024):
-
-## Running
-You need working with Apex Legends firmware, plus place vmm.dll, ftd3xx.dll, leechcore.dll near executable.
+```bash
+cargo build --release
+```
