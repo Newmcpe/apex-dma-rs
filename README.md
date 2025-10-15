@@ -6,6 +6,8 @@ Super basic Apex Legends DMA enhancer. Works with the latest game update for 16.
 - Corner box ESP
 - Player names
 - DMA-based memory access
+- 🚀⚡ Rust blazing fast performance 📦🎯🦀
+
 
 ## Requirements
 - Rust (nightly/stable with edition 2024)
