@@ -81,7 +81,13 @@ impl eframe::App for OverlayApp {
                 let snapshot = self.rx.borrow_and_update();
                 let view = snapshot.view;
                 let entities = &snapshot.entities;
+                let local_origin = entities
+                    .iter()
+                    .find(|en| en.base == self.local_player)
+                    .map(|en| en.origin);
                 let painter = ui.painter();
+                let screen_w = ui.max_rect().width();
+                let screen_h = ui.max_rect().height();
 
                 let fps = {
                     let dt = ctx.input(|i| i.stable_dt);
@@ -107,82 +113,68 @@ impl eframe::App for OverlayApp {
                     Color32::from_rgb(120, 200, 255),
                 );
 
-                for (idx, e) in entities.iter().enumerate() {
+                for (_idx, e) in entities.iter().enumerate() {
                     if e.base == self.local_player {
                         continue;
                     }
-                    // Draw AABB-based shaped bounding box with health bar and name
-                    if idx < snapshot.aabbs.len() {
-                        let (mins, maxs) = snapshot.aabbs[idx];
-                        let corners = [
-                            // bottom rectangle (z = mins.z)
-                            Vec3::new(mins.x, mins.y, mins.z),
-                            Vec3::new(maxs.x, mins.y, mins.z),
-                            Vec3::new(maxs.x, maxs.y, mins.z),
-                            Vec3::new(mins.x, maxs.y, mins.z),
-                            // top rectangle (z = maxs.z)
-                            Vec3::new(mins.x, mins.y, maxs.z),
-                            Vec3::new(maxs.x, mins.y, maxs.z),
-                            Vec3::new(maxs.x, maxs.y, maxs.z),
-                            Vec3::new(mins.x, maxs.y, maxs.z),
-                        ];
-                        let mut pts = [None; 8];
-                        for i in 0..8 {
-                            pts[i] = world_to_screen(corners[i], view, 1920.0, 1080.0);
-                        }
-                        // Build 2D bounding rectangle from projected corners
-                        let mut min_x = f32::INFINITY;
-                        let mut min_y = f32::INFINITY;
-                        let mut max_x = f32::NEG_INFINITY;
-                        let mut max_y = f32::NEG_INFINITY;
-                        let mut any = false;
-                        for p in &pts {
-                            if let Some(pt) = p {
-                                any = true;
-                                if pt.x < min_x {
-                                    min_x = pt.x;
-                                }
-                                if pt.y < min_y {
-                                    min_y = pt.y;
-                                }
-                                if pt.x > max_x {
-                                    max_x = pt.x;
-                                }
-                                if pt.y > max_y {
-                                    max_y = pt.y;
-                                }
-                            }
-                        }
-                        if any {
-                            let w = (max_x - min_x).max(1.0);
-                            let h = (max_y - min_y).max(1.0);
-                            let tl = pos2(min_x, min_y);
-                            let tr = pos2(max_x, min_y);
-                            let bl = pos2(min_x, max_y);
-                            let br = pos2(max_x, max_y);
+                    // Corner box using origin only (no AABB): assume Z+ is up
+                    {
+                        const HEAD_OFFSET: f32 = 72.0; // tweak if needed
+                        let head3d = e.origin + Vec3::new(0.0, 0.0, HEAD_OFFSET);
+                        let feet3d = e.origin;
+                        if let (Some(head2d), Some(feet2d)) = (
+                            world_to_screen(head3d, view, screen_w, screen_h),
+                            world_to_screen(feet3d, view, screen_w, screen_h),
+                        ) {
+                            let h = (feet2d.y - head2d.y).abs().max(1.0);
+                            let base_w = (h * 0.45).max(8.0);
+                            let distance_scale = if let Some(lo) = local_origin {
+                                let d = e.origin.distance(lo).max(1.0);
+                                (400.0 / d).clamp(0.6, 1.8)
+                            } else {
+                                1.0
+                            };
+                            let w = base_w * distance_scale;
+                            let cx = feet2d.x;
+                            let top_y = head2d.y.min(feet2d.y);
+                            let bot_y = head2d.y.max(feet2d.y);
+
+                            let tl = pos2(cx - w * 0.5, top_y);
+                            let tr = pos2(cx + w * 0.5, top_y);
+                            let bl = pos2(cx - w * 0.5, bot_y);
+                            let br = pos2(cx + w * 0.5, bot_y);
                             let color = Color32::from_rgb(0, 200, 255);
-                            let corner = (w.min(h) * 0.25).clamp(6.0, 20.0);
+                            let corner = (w.min(h) * 0.25 * distance_scale).clamp(4.0, 20.0);
+                            let thickness = (2.0 * distance_scale).clamp(1.0, 3.0);
 
-                            // Corner box (8 segments)
-                            painter.line_segment([tl, pos2(tl.x + corner, tl.y)], (2.0, color));
-                            painter.line_segment([tl, pos2(tl.x, tl.y + corner)], (2.0, color));
+                            painter
+                                .line_segment([tl, pos2(tl.x + corner, tl.y)], (thickness, color));
+                            painter
+                                .line_segment([tl, pos2(tl.x, tl.y + corner)], (thickness, color));
 
-                            painter.line_segment([tr, pos2(tr.x - corner, tr.y)], (2.0, color));
-                            painter.line_segment([tr, pos2(tr.x, tr.y + corner)], (2.0, color));
+                            painter
+                                .line_segment([tr, pos2(tr.x - corner, tr.y)], (thickness, color));
+                            painter
+                                .line_segment([tr, pos2(tr.x, tr.y + corner)], (thickness, color));
 
-                            painter.line_segment([bl, pos2(bl.x + corner, bl.y)], (2.0, color));
-                            painter.line_segment([bl, pos2(bl.x, bl.y - corner)], (2.0, color));
+                            painter
+                                .line_segment([bl, pos2(bl.x + corner, bl.y)], (thickness, color));
+                            painter
+                                .line_segment([bl, pos2(bl.x, bl.y - corner)], (thickness, color));
 
-                            painter.line_segment([br, pos2(br.x - corner, br.y)], (2.0, color));
-                            painter.line_segment([br, pos2(br.x, br.y - corner)], (2.0, color));
+                            painter
+                                .line_segment([br, pos2(br.x - corner, br.y)], (thickness, color));
+                            painter
+                                .line_segment([br, pos2(br.x, br.y - corner)], (thickness, color));
 
-                            // Name at top center
-                            let top_center = pos2((tl.x + tr.x) * 0.5, tl.y - 14.0);
+                            // Name at top center (scale with distance)
+                            let name_offset = 14.0 * distance_scale;
+                            let top_center = pos2((tl.x + tr.x) * 0.5, tl.y - name_offset);
                             painter.text(
                                 top_center,
                                 Align2::CENTER_BOTTOM,
                                 e.name.as_str(),
-                                Self::get_harmony_font(14.0),
+                                Self::get_harmony_font((14.0 * distance_scale).clamp(10.0, 22.0)),
                                 Color32::WHITE,
                             );
 
@@ -204,6 +196,26 @@ impl eframe::App for OverlayApp {
                                 0.0,
                                 Color32::from_rgb(80, 220, 120),
                             );
+                        }
+                    }
+                    // Debug local axes from entity origin: X=red, Y=green, Z=blue
+                    let o = e.origin;
+                    let axis = 15.0;
+                    if let Some(p0) = world_to_screen(o, view, screen_w, screen_h) {
+                        if let Some(px) =
+                            world_to_screen(o + Vec3::new(axis, 0.0, 0.0), view, screen_w, screen_h)
+                        {
+                            painter.line_segment([p0, px], (2.0, Color32::from_rgb(220, 80, 80)));
+                        }
+                        if let Some(py) =
+                            world_to_screen(o + Vec3::new(0.0, axis, 0.0), view, screen_w, screen_h)
+                        {
+                            painter.line_segment([p0, py], (2.0, Color32::from_rgb(80, 220, 120)));
+                        }
+                        if let Some(pz) =
+                            world_to_screen(o + Vec3::new(0.0, 0.0, axis), view, screen_w, screen_h)
+                        {
+                            painter.line_segment([p0, pz], (2.0, Color32::from_rgb(80, 120, 220)));
                         }
                     }
                 }
